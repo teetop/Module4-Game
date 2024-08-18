@@ -188,11 +188,6 @@ contract DegenGame is ERC20, Ownable {
 - Once you have sorted your environment, you can deploy the contract by clicking the "Deploy & Run Transactions" tab in the left-hand sidebar. Select the "DegenGame" contract from the dropdown menu, and then click on the "Deploy" button.
  
 - Once the contract is deployed, you can interact with it the contract.
-  
-# Contract Address (Snowtrace)
-
-
-# Interaction
 
 
 # Authors
