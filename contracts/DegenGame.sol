@@ -1,200 +1,145 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.18;
 
-/*
-Your task is to create a ERC20 token and deploy it on the Avalanche network for Degen Gaming. The smart contract should have the following functionality:
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-Minting new tokens: The platform should be able to create new tokens and distribute them to players as rewards. Only the owner can mint tokens.
-Transferring tokens: Players should be able to transfer their tokens to others.
-Redeeming tokens: Players should be able to redeem their tokens for items in the in-game store.
-Checking token balance: Players should be able to check their token balance at any time.
-Burning tokens: Anyone should be able to burn tokens, that they own, that are no longer needed.
-*/
+contract DegenGame is ERC20, Ownable {
 
-
-import "contracts/Err.sol";
-import "contracts/Degen.sol";
-
-contract DegenGame is Degen {
-
-    address public owner;
     Player[] allPlayers;
 
-    enum Level {
-        BEGINNER,
-        INTERMEDIATE,
-        PRO
-    }
-
     struct Player {
-        address playerId;
-        string playerNick;
-        Level level;
-        uint256 registerAt;
+        address player;
+        string username;
         bool isRegistered;
     }
 
-    struct GameProp {
-        address currentOwner;
-        bytes32 propId;
-        string propName;
-        uint256 worth;
+    struct GameItem {
+        address owner;
+        uint256 itemId;
+        string name;
+        uint256 amount;
     }
 
     mapping(address => Player) public players;
-    mapping(bytes32 => GameProp) public gameProps;
-    mapping(address => mapping(bytes32 => GameProp)) public playerProps;
+    mapping(uint256 => GameItem) public gameItems;
+    mapping(address => mapping (uint256 => GameItem)) public itemOwners;
 
-    event PlayerRegisters(address player, bool success);
-    event RewardDistributed(Player[] allPlayers, uint256 totalRewards, uint256 arrayLenth);
-    event PlayerP2P(address sender, address recipient, uint256 amount);
+    event Registers(address player, bool success);
+    event PlayerTransfers(address sender, address recipient, uint256 amount);
     event TokenBurnt(address owner, uint256 _amount);
-    event PropCreated(address currentOwner, string _propName, bytes32 propId, uint256 _worth);
-    event PropBought(address newOwner, bytes32 _propId, string propName);
+    event ItemRedeemed(address newOwner, uint256 itemId, string name);
 
-
-    constructor () Degen() {
-        owner = msg.sender;
+    constructor() ERC20("Degen", "DGN") Ownable(msg.sender) {
+        addGameProp();
+        _mint(address(this), 100000);
     }
 
-    function addressZeroCheck() private view {
-        if (msg.sender == address(0)) revert Err.ZERO_ADDRESS_NOT_ALLOWED();
+
+    function addGameProp() private {
+        gameItems[1] = GameItem (address(this), 1, "item1", 100);
+        itemOwners[address(this)][1] = gameItems[1];
+        gameItems[2] = GameItem (address(this), 2, "item2", 200);
+        itemOwners[address(this)][2] = gameItems[2];
+        gameItems[3] = GameItem (address(this), 3, "item3", 300);
+        itemOwners[address(this)][3] = gameItems[3];
+        gameItems[4] = GameItem (address(this), 4, "item4", 400);
+        itemOwners[address(this)][4] = gameItems[4];
+        gameItems[5] = GameItem (address(this), 5, "item5", 500);
+        itemOwners[address(this)][5] = gameItems[5];
     }
 
-    function isRegistered() private view {
-        if (!players[msg.sender].isRegistered) revert Err.YOU_ARE_NOT_REGISTERED();
+
+    modifier addressZeroCheck() {
+        if (msg.sender == address(0)) revert("ADDRESS_ZERO_NOT_ALLOWED");
+        _;
     }
 
-    function playerRegister(string memory _playerNick) external {
-        addressZeroCheck();
-        if (players[msg.sender].playerId != address(0)) revert Err.YOU_HAVE_REGISTERED();
-        if (msg.sender == s_owner) revert Err.OWNER_CANNOT_REGISTER();
+    modifier isRegistered() {
+         if (players[msg.sender].isRegistered == false) 
+            revert("YOU_ARE_NOT_REGISTERED");
+            _;
+    }
 
-        Player storage _player = players[msg.sender];
-        _player.playerId = msg.sender;
-        _player.playerNick = _playerNick;
-        _player.level = Level.BEGINNER;
-        _player.registerAt = block.timestamp;
-        _player.isRegistered = true;
+    function playerRegister(string memory _username) external addressZeroCheck {
+      
+        if (players[msg.sender].player != address(0)) revert("ALREADY_REGISTERED");
+        if (msg.sender == owner()) revert("OWNER_CANNOT_REGISTER");
 
+        Player memory _player = Player(msg.sender, _username, true);
+
+        players[msg.sender] = _player;
         allPlayers.push(_player);
 
-        emit PlayerRegisters(msg.sender, true);
+        emit Registers(msg.sender, true);
     }
 
-    //this is just to simulate player level change
-    function changePlayerLevel(address _playerId, Level _level) external {
-        onlyOwner();
-        players[_playerId].level = _level;
-    }
+    function distributeTokens() external onlyOwner {
+        Player[] memory _players = allPlayers;
 
-    function ditributeRewardToPlayers() external {
-        onlyOwner();
-        if (allPlayers.length <= 0) revert Err.N0_PLAYERS_TO_REWARD();
-        uint256 totalRewards;
-
-        for (uint8 i = 0; i < allPlayers.length; i++) {
-            Player memory _player = players[allPlayers[i].playerId];
-            Level _level = _player.level;
-
-            if (_level == Level.PRO) {
-                uint _amount = 1000 * 5;
-                mint(_player.playerId, _amount);
-                totalRewards += _amount;
-            } else if (_level == Level.INTERMEDIATE) {
-                uint _amount = 1000 * 3;
-                mint(_player.playerId, _amount);
-                totalRewards += _amount;
-            } else if (_level == Level.BEGINNER) {
-                uint _amount = 1000;
-                mint(_player.playerId, _amount);
-                totalRewards += _amount;
-            }
+        for (uint i = 0; i < _players.length; i++) {
+            _transfer(address(this), _players[i].player, 1000);
         }
-
-        //Note, allPlayers array is not updated. I just used it to get the length
-        emit RewardDistributed(allPlayers, totalRewards, allPlayers.length);
     }
 
 
-    function playerP2PTransfer(address _recipient, uint256 _amount) external returns (bool) {
-        addressZeroCheck();
-        isRegistered();
+    function transferToken(address _recipient, uint256 _amount) external isRegistered addressZeroCheck {
+        if (players[_recipient].isRegistered == false) 
+            revert("RECIPIENT_NOT_A_PLAYER");
+    
+        if (!transfer(_recipient, _amount)) 
+            revert("TRANSFER_FAILED");
 
-        if (transfer(_recipient, _amount)) {
-            emit PlayerP2P(msg.sender, _recipient, _amount);
-            return true;
-        }
-
-        revert Err.TRANSFER_FAILED();
+        emit PlayerTransfers(msg.sender, _recipient, _amount);
     }
 
-
-    function playerCheckTokenBalance() external view returns (uint256) {
-        addressZeroCheck();
-        isRegistered();
+    function balance() external isRegistered view returns (uint256) {
 
         return balanceOf(msg.sender);
     }
 
-    function suspendPlayer(address player) external {
-        onlyOwner();
+    function lockAccount(address player) external onlyOwner {
         Player storage _player = players[player];
-        if (_player.playerId == address(0) || !_player.isRegistered) revert Err.PLAYER_DOES_NOT_EXIST();
+
+        if (_player.player == address(0) || !_player.isRegistered)
+            revert("PLAYER_DOES_NOT_EXIST");
 
         _player.isRegistered = false;
     }
 
-    function forgivePlayer(address player) external {
-        onlyOwner();
+    function openAccount(address player) external onlyOwner {
         Player storage _player = players[player];
-        if (_player.playerId == address(0)) revert Err.PLAYER_DOES_NOT_EXIST();
-        if (_player.isRegistered) revert Err.PLAYER_NOT_SUSPENDED();
+        if (_player.player == address(0)) revert("PLAYER_DOES_NOT_EXIST");
+        if (_player.isRegistered) revert("PLAYER_NOT_SUSPENDED");
 
         _player.isRegistered = true;
     }
 
-    function playerBurnsTheirToken(uint256 _amount) external {
-        addressZeroCheck();
-        isRegistered();
+    function playerBurnsToken(uint256 _amount) external addressZeroCheck isRegistered  {
 
-        burn(_amount);
+        _burn(msg.sender, _amount);
 
         emit TokenBurnt(msg.sender, _amount);
     }
 
+ 
 
-    function addGameProp(string calldata _propName, uint256 _worth) external {
-        onlyOwner();
+    function redeemItem(uint256 itemId) external isRegistered addressZeroCheck {
 
-        bytes32 propId = keccak256(abi.encodePacked(_propName, _worth));
-        GameProp storage _gameStorage = gameProps[propId];
-        _gameStorage.currentOwner = address(this);
-        _gameStorage.propId = propId;
-        _gameStorage.propName = _propName;
-        _gameStorage.worth = _worth;
+        GameItem storage _gameItem = gameItems[itemId];
 
+        if (_gameItem.owner == address(0)) revert("ITEM_DOES_NOT_EXIST");
 
-        emit PropCreated(address(this), _propName, propId, _worth);
-    }
+        uint256 itemAmount = _gameItem.amount;
 
-    function playerBuysProp(bytes32 _propId) external {
-        isRegistered();
+        if (balanceOf(msg.sender) < itemAmount) revert("INSUFFICIENT_BALANCE");
 
-        GameProp storage _gameProp = gameProps[_propId];
+        transfer(address(this), itemAmount);
 
-        if (_gameProp.currentOwner == address(0)) revert Err.PROP_DOES_NOT_EXIST();
+        _gameItem.owner = msg.sender;
 
-        uint256 propWorth = _gameProp.worth;
+        itemOwners[msg.sender][itemId] = _gameItem;
 
-        if (balanceOf(msg.sender) < propWorth) revert Err.INSUFFICIENT_BALANCE();
-
-        transfer(address(this), propWorth);
-
-        _gameProp.currentOwner = msg.sender;
-
-        playerProps[msg.sender][_propId] = _gameProp;
-
-        emit PropBought(msg.sender, _propId, _gameProp.propName);
+        emit ItemRedeemed(msg.sender, itemId, _gameItem.name);
     }
 }
